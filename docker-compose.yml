@@ -1,0 +1,18 @@
+version: "3.8"
+services:
+  web:
+    build: .
+    container_name: tg_userharvest_fastapi
+    environment:
+      - API_ID=${API_ID}
+      - API_HASH=${API_HASH}
+      - TZ=${TZ}
+      - DB_URL=${DB_URL}
+      - HOST=0.0.0.0
+      - PORT=8000
+      - MAX_CONCURRENCY=${MAX_CONCURRENCY}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data.sqlite3:/app/data.sqlite3
+    restart: unless-stopped

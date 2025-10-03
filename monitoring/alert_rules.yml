@@ -1,0 +1,82 @@
+groups:
+  - name: tg-userharvest-alerts
+    rules:
+      # 应用健康检查告警
+      - alert: ApplicationDown
+        expr: up{job="tg-userharvest"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "TG UserHarvest应用已停止"
+          description: "TG UserHarvest应用在过去1分钟内无法访问"
+
+      # 高CPU使用率告警
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU使用率过高"
+          description: "实例 {{ $labels.instance }} CPU使用率超过80%，当前值: {{ $value }}%"
+
+      # 高内存使用率告警
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "内存使用率过高"
+          description: "实例 {{ $labels.instance }} 内存使用率超过85%，当前值: {{ $value }}%"
+
+      # 磁盘空间不足告警
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "磁盘空间不足"
+          description: "实例 {{ $labels.instance }} 根分区剩余空间少于10%，当前值: {{ $value }}%"
+
+      # HTTP错误率过高告警
+      - alert: HighErrorRate
+        expr: rate(nginx_http_requests_total{status=~"5.."}[5m]) / rate(nginx_http_requests_total[5m]) * 100 > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HTTP错误率过高"
+          description: "过去5分钟内HTTP 5xx错误率超过5%，当前值: {{ $value }}%"
+
+      # 响应时间过长告警
+      - alert: HighResponseTime
+        expr: histogram_quantile(0.95, rate(nginx_http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "响应时间过长"
+          description: "95%的请求响应时间超过2秒，当前值: {{ $value }}秒"
+
+      # 容器重启告警
+      - alert: ContainerRestarted
+        expr: increase(container_start_time_seconds[1h]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "容器重启"
+          description: "容器 {{ $labels.name }} 在过去1小时内重启了"
+
+      # 数据库连接失败告警
+      - alert: DatabaseConnectionFailed
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "数据库连接失败"
+          description: "PostgreSQL数据库连接失败超过1分钟"

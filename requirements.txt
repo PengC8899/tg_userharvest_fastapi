@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+jinja2
+sqlalchemy>=2.0
+pydantic>=2.0
+python-dotenv
+telethon>=1.30
+aiofiles
+tzdata
+PyJWT
+python-multipart
+passlib[bcrypt]

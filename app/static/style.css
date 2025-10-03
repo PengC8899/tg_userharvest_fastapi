@@ -1,0 +1,214 @@
+:root { --bg:#0f1115; --fg:#e6e6e6; --muted:#9aa0aa; --card:#1a1e24; --accent:#4e9af1; }
+* { box-sizing: border-box; }
+html, body { margin:0; padding:0; background:var(--bg); color:var(--fg); font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+.container { max-width: 980px; margin: 0 auto; padding: 20px; }
+h1 { font-size: 24px; margin: 0 0 16px; }
+h2 { font-size: 18px; margin: 24px 0 8px; color: var(--accent); }
+.card { background: var(--card); border: 1px solid #232832; border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+label { color: var(--muted); margin-right: 6px; }
+input, select, textarea { background: #0d1016; color: var(--fg); border: 1px solid #2a2f3a; border-radius: 8px; padding: 8px 10px; }
+input, select { height: 34px; }
+textarea { width: 100%; min-height: 80px; }
+button, a[href] { background: var(--accent); color: white; border: none; border-radius: 8px; padding: 8px 12px; text-decoration: none; cursor: pointer; }
+button:hover, a[href]:hover { filter: brightness(1.1); }
+button:disabled { background: #555; cursor: not-allowed; opacity: 0.6; }
+.list { margin-top: 8px; }
+.list ul { list-style: none; padding: 0; margin: 0; }
+.list li { padding: 6px 4px; border-bottom: 1px dashed #2a2f3a; }
+
+/* 加载状态和进度指示器 */
+.loading-btn { position: relative; }
+.loading-btn::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  margin: auto;
+  border: 2px solid transparent;
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* 结果面板 */
+.result-panel {
+  background: var(--card);
+  border: 1px solid #4caf50;
+  border-radius: 8px;
+  padding: 12px;
+  margin: 10px 0;
+  animation: slideIn 0.3s ease-out;
+}
+
+.result-panel.error {
+  border-color: #e65c5c;
+}
+
+.result-panel.warning {
+  border-color: #ff9800;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.result-header {
+  font-weight: bold;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.result-content {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.result-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.stat-item {
+  background: #0d1016;
+  padding: 6px 8px;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.stat-value {
+  font-size: 18px;
+  font-weight: bold;
+  color: var(--accent);
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* 状态指示器 */
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-indicator.collecting {
+  background: rgba(76, 175, 80, 0.2);
+  color: #4caf50;
+}
+
+.status-indicator.idle {
+  background: rgba(158, 158, 158, 0.2);
+  color: var(--muted);
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-dot.pulse {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* 进度条样式 */
+.progress-container {
+  margin: 10px 0;
+  padding: 8px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #e9ecef;
+}
+
+.progress-bar-wrapper {
+  width: 100%;
+  height: 20px;
+  background-color: #e9ecef;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #007bff, #0056b3);
+  border-radius: 10px;
+  transition: width 0.3s ease;
+  position: relative;
+}
+
+.progress-bar.animated::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.4),
+    transparent
+  );
+  animation: progress-shine 2s infinite;
+}
+
+@keyframes progress-shine {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.progress-text {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #6c757d;
+}
+
+.progress-percentage {
+  font-weight: bold;
+  color: #007bff;
+}
+
+.progress-details {
+  display: flex;
+  align-items: center;
+}
+
+.current-group {
+  color: #495057;
+  margin-right: 10px;
+}
+
+.eta {
+  color: #6c757d;
+  font-style: italic;
+}

@@ -1,0 +1,96 @@
+# Environment files
+.env
+.env.local
+.env.prod
+.env.prod.local
+.env.prod.locales
+*.env
+
+# Database files
+*.sqlite3
+*.db
+data/
+logs/
+
+# Session files
+*.session
+*.session-journal
+
+# SSL certificates
+nginx/ssl/*.pem
+nginx/ssl/*.key
+nginx/ssl/*.crt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Docker
+.dockerignore
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Test files and debug scripts
+test_*.py
+debug_*.py
+*_test.py
+*_debug.py
+
+# Monitoring data
+monitoring/grafana/data/
+monitoring/prometheus/data/
+
+# Docker volumes
+postgres_data/
+grafana_data/
+prometheus_data/

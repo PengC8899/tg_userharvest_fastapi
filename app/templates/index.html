@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Telegram 采集管理台</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <!-- 登录界面 -->
+  <div id="login-container" class="login-container">
+    <div class="login-card">
+      <h2>登录验证</h2>
+      <form id="login-form">
+        <div class="form-group">
+          <label for="username">用户名</label>
+          <input type="text" id="username" name="username" required>
+        </div>
+        <div class="form-group">
+          <label for="password">密码</label>
+          <input type="password" id="password" name="password" required>
+        </div>
+        <button type="submit">登录</button>
+      </form>
+      <div id="login-error" class="error-message" style="display: none;"></div>
+    </div>
+  </div>
+
+  <!-- 主界面 -->
+  <div id="main-container" class="container" style="display: none;">
+    <div class="header">
+      <h1>Telegram 采集管理台</h1>
+      <button id="logout-btn" class="logout-btn">退出登录</button>
+    </div>
+
+    {% if not settings.api_id or not settings.api_hash %}
+    <div class="card" style="border-color:#e65c5c">
+      <div class="row"><strong>环境未配置：缺少 API_ID / API_HASH</strong></div>
+      <div class="row">请在项目根目录创建 <code>.env</code> 并填入 <code>API_ID</code> 与 <code>API_HASH</code>，然后重启服务。</div>
+    </div>
+    {% else %}
+    <div class="card" style="border-color:#4caf50">
+      <div class="row"><strong>环境已就绪</strong><span>（API_ID / API_HASH 已配置）</span></div>
+    </div>
+    {% endif %}
+
+    <section>
+      <h2>采集统计</h2>
+      <div class="card">
+        <div class="row">
+          <button onclick="loadStats()">刷新统计</button>
+        </div>
+        <div id="stats_content">
+          <div class="row">点击"刷新统计"查看采集数据</div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>采集历史</h2>
+      <div class="card">
+        <div class="row">
+          <button onclick="loadCollectionHistory()">刷新历史记录</button>
+          <button onclick="clearCollectionHistory()" style="background:#e65c5c">清空历史</button>
+        </div>
+        <div id="collection_history"></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>新增账号</h2>
+      <div class="card">
+        <label>名称</label>
+        <input id="acc_name" placeholder="如：监听1号" />
+        <label>电话（可选）</label>
+        <input id="acc_phone" placeholder="+855..." />
+        <label>StringSession</label>
+        <textarea id="acc_session" placeholder="若没有会话，使用下方一键生成"></textarea>
+        <label><input type="checkbox" id="acc_enabled" checked /> 启用</label>
+        <button onclick="createAccount()">新增账号</button>
+
+        <hr />
+        <div class="row"><strong>没有会话？用手机号一键生成</strong></div>
+        <label>手机号（含国家码，如 +86...）</label>
+        <input id="gen_phone" placeholder="+86..." />
+        <div class="row">
+          <button onclick="sendCode()">发送验证码</button>
+        </div>
+        <label>短信/Telegram 验证码</label>
+        <input id="gen_code" placeholder="输入收到的 5 位或 6 位验证码" />
+        <label>两步验证密码（若开启）</label>
+        <input id="gen_password" type="password" placeholder="可留空" />
+        <div class="row">
+          <button onclick="verifyLogin()">确认登录并生成会话</button>
+        </div>
+        <div id="gen_msg" class="row" style="color:#666"></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>账号列表</h2>
+      <div class="card">
+        <div class="row">
+          <label>全局采集天数</label>
+          <input id="days_all" type="number" value="7" min="1" max="30" />
+          <button id="collect_all_btn" onclick="collectAllEnabled()">采集所有启用账号</button>
+          <div id="status_all" class="status-indicator idle" style="display: none;">
+            <div class="status-dot"></div>
+            <span>空闲</span>
+          </div>
+        </div>
+        <div id="progress_all" class="progress-container" style="display: none;">
+          <div class="progress-bar-wrapper">
+            <div class="progress-bar animated" style="width: 0%"></div>
+          </div>
+          <div class="progress-text">
+            <span class="progress-percentage">0%</span>
+            <span class="progress-details">
+              <span class="current-group">准备中...</span>
+              <span class="eta" style="margin-left: 10px;">预计剩余: --</span>
+            </span>
+          </div>
+        </div>
+        <div id="result_all"></div>
+        <div class="row">
+          <label>全局导出范围</label>
+          <select id="range_all">
+            <option value="today">today</option>
+            <option value="yesterday">yesterday</option>
+            <option value="3d">3d</option>
+            <option value="7d" selected>7d</option>
+          </select>
+          <input id="chat_all" placeholder="可选 chat_id" />
+          <a href="#" onclick="downloadTxtAll(); return false;">导出所有启用账号 TXT</a>
+        </div>
+        <div class="row">
+          <label>数据库管理</label>
+          <button onclick="cleanupDatabase()" style="background:#ff9800;">整理数据库</button>
+          <button onclick="downloadCleanedUsernames()" style="background:#4caf50;">下载整理后用户名</button>
+        </div>
+      </div>
+      <div id="accounts"></div>
+    </section>
+  </div>
+
+  <script>
+    async function apiJSON(url, options = {}) {
+      try {
+        // 为采集请求设置更长的超时时间
+        const isCollectRequest = url.includes('/api/collect');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          if (!isCollectRequest) {
+            controller.abort();
+          }
+        }, isCollectRequest ? 30 * 60 * 1000 : 30000); // 采集请求30分钟超时，其他请求30秒
+        
+        const fetchOptions = {
+          ...options,
+          signal: controller.signal
+        };
+        
+        const res = await fetch(url, fetchOptions);
+        clearTimeout(timeoutId);
+        
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const j = await res.json();
+          return j;
+        }
+        const text = await res.text();
+        return { ok: res.ok, data: null, error: text || res.statusText };
+      } catch (e) {
+        if (e.name === 'AbortError') {
+          return { ok: false, data: null, error: '请求超时，请稍后重试' };
+        }
+        return { ok: false, data: null, error: e.message || String(e) };
+      }
+    }
+
+    async function createAccount() {
+      const name = document.getElementById('acc_name').value.trim();
+      const phone = document.getElementById('acc_phone').value.trim();
+      const session_string = document.getElementById('acc_session').value.trim();
+      const is_enabled = document.getElementById('acc_enabled').checked;
+      const j = await apiJSON('/api/accounts', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name, phone, session_string, is_enabled})
+      });
+      alert(j.ok ? '创建成功' : '创建失败: ' + j.error);
+      if (j.ok) {
+        document.getElementById('acc_name').value = '';
+        document.getElementById('acc_phone').value = '';
+        document.getElementById('acc_session').value = '';
+        document.getElementById('acc_enabled').checked = true;
+      }
+      await loadAccounts();
+    }
+
+    async function sendCode() {
+      const phone = document.getElementById('gen_phone').value.trim();
+      if (!phone) { document.getElementById('gen_msg').textContent = '请先填写手机号'; return; }
+      document.getElementById('gen_msg').textContent = '正在发送验证码...';
+      const j = await apiJSON('/api/session/init', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ phone })
+      });
+      document.getElementById('gen_msg').textContent = j.ok ? '验证码已发送，请输入收到的验证码' : ('发送失败: ' + j.error);
+    }
+
+    async function verifyLogin() {
+      const phone = document.getElementById('gen_phone').value.trim();
+      const code = document.getElementById('gen_code').value.trim();
+      const password = document.getElementById('gen_password').value.trim();
+      if (!phone || !code) { document.getElementById('gen_msg').textContent = '请填写手机号和验证码'; return; }
+      document.getElementById('gen_msg').textContent = '正在登录并生成会话...';
+      const j = await apiJSON('/api/session/verify', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ phone, code, password })
+      });
+      if (j.ok) {
+        document.getElementById('acc_session').value = j.data.session_string;
+        // 自动标记登录使用的手机号，避免手动填写遗漏
+        document.getElementById('acc_phone').value = phone;
+        document.getElementById('gen_msg').textContent = '生成成功，已自动填入上方会话框';
+      } else {
+        document.getElementById('gen_msg').textContent = '生成失败: ' + j.error;
+      }
+    }
+
+    async function loadAccounts() {
+      const j = await apiJSON('/api/accounts');
+      const div = document.getElementById('accounts');
+      div.innerHTML = '';
+      if (!j.ok) { div.textContent = '加载失败: ' + j.error; return; }
+      const accs = j.data.accounts || [];
+      for (const a of accs) {
+        const el = document.createElement('div'); el.className = 'card';
+        el.innerHTML = `
+          <div class="row">
+            <strong>${a.name}</strong> (#${a.id})
+            <span style="color:#888; margin-left:8px;">${a.phone ? a.phone : '无电话'}</span>
+            <label><input type="checkbox" ${a.is_enabled ? 'checked' : ''} onchange="toggleEnabled(${a.id}, this.checked)"> 启用</label>
+            <button onclick="deleteAccount(${a.id})" style="background:#e65c5c">删除账号</button>
+          </div>
+          <div class="row">
+            <button onclick="testSession(${a.id})">测试会话</button>
+            <button onclick="refreshGroups(${a.id})">刷新群组</button>
+            <button onclick="showGroups(${a.id})">显示群组</button>
+            <button onclick="showSelected(${a.id})">已勾选</button>
+          </div>
+          <div class="row">
+            <button id="listener_btn_${a.id}" onclick="toggleListener(${a.id})" style="background:#2196f3">启动监听</button>
+            <div id="listener_status_${a.id}" class="status-indicator idle" style="display: none;">
+              <div class="status-dot"></div>
+              <span>监听状态</span>
+            </div>
+            <button id="download_listener_${a.id}" onclick="downloadListenerUsernames(${a.id})" style="background:#4caf50; display: none;">下载监听用户名</button>
+          </div>
+          <div class="row">
+            <label>选择采集天数</label>
+            <input id="days_${a.id}" type="number" value="7" min="1" max="30" />
+            <button id="collect_btn_${a.id}" onclick="startCollect(${a.id})">开始采集（仅该账号）</button>
+            <div id="status_${a.id}" class="status-indicator idle" style="display: none;">
+              <div class="status-dot"></div>
+              <span>空闲</span>
+            </div>
+          </div>
+          <div id="progress_${a.id}" class="progress-container" style="display: none;">
+            <div class="progress-bar-wrapper">
+              <div class="progress-bar animated" style="width: 0%"></div>
+            </div>
+            <div class="progress-text">
+              <span class="progress-percentage">0%</span>
+              <span class="progress-details">
+                <span class="current-group">准备中...</span>
+                <span class="eta" style="margin-left: 10px;">预计剩余: --</span>
+              </span>
+            </div>
+          </div>
+          <div id="result_${a.id}"></div>
+          <div class="row">
+            <label>导出范围</label>
+            <select id="range_${a.id}">
+              <option value="today">today</option>
+              <option value="yesterday">yesterday</option>
+              <option value="3d">3d</option>
+              <option value="7d" selected>7d</option>
+            </select>
+            <input id="chat_${a.id}" placeholder="可选 chat_id" />
+            <a id="download_${a.id}" href="#" onclick="downloadTxt(${a.id}); return false;">下载 TXT</a>
+          </div>
+          <div id="groups_${a.id}" class="list"></div>
+        `;
+        div.appendChild(el);
+      }
+    }
+
+    async function testSession(account_id) {
+      const j = await apiJSON(`/api/accounts/${account_id}/test-session`, {method: 'POST'});
+      alert(j.ok ? ('授权状态: ' + j.data.authorized) : ('失败: ' + j.error));
+    }
+
+    async function refreshGroups(account_id) {
+      const j = await apiJSON(`/api/accounts/${account_id}/refresh-groups`, {method: 'POST'});
+      alert(j.ok ? ('刷新群数量: ' + j.data.count) : ('失败: ' + j.error));
+    }
+
+    async function showGroups(account_id) {
+      const j = await apiJSON(`/api/accounts/${account_id}/groups`);
+      const box = document.getElementById(`groups_${account_id}`);
+      if (!j.ok) { box.textContent = '加载失败: ' + j.error; return; }
+      const groups = j.data.groups || [];
+      box.innerHTML = '';
+      const ul = document.createElement('ul');
+      for (const g of groups) {
+        const li = document.createElement('li');
+        li.innerHTML = `<label><input type="checkbox" value="${g.chat_id}"> [${g.chat_id}] ${g.title}</label>`;
+        ul.appendChild(li);
+      }
+      box.appendChild(ul);
+      const btn = document.createElement('button');
+      btn.textContent = '保存勾选';
+      btn.onclick = async () => {
+        const checked = Array.from(box.querySelectorAll('input[type=checkbox]:checked')).map(i => parseInt(i.value));
+        const j2 = await apiJSON(`/api/accounts/${account_id}/select-groups`, {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({chat_ids: checked})
+        });
+        alert(j2.ok ? ('已保存: ' + j2.data.count) : ('失败: ' + j2.error));
+      };
+      box.appendChild(btn);
+    }
+
+    async function showSelected(account_id) {
+      const j = await apiJSON(`/api/accounts/${account_id}/selected-groups`);
+      if (!j.ok) { alert('失败: ' + j.error); return; }
+      const selected = (j.data.selected || []).map(s => s.chat_id);
+      const box = document.getElementById(`groups_${account_id}`);
+      box.innerHTML = '<div class="row">已勾选群聊: ' + (selected.length ? selected.join(', ') : '无') + '</div>';
+    }
+
+    async function startCollect(account_id) {
+      const btn = document.getElementById(`collect_btn_${account_id}`);
+      const status = document.getElementById(`status_${account_id}`);
+      const progressDiv = document.getElementById(`progress_${account_id}`);
+      const resultDiv = document.getElementById(`result_${account_id}`);
+      
+      // 设置加载状态
+      btn.disabled = true;
+      btn.classList.add('loading-btn');
+      btn.textContent = '采集中...';
+      
+      // 显示状态指示器和进度条
+      status.style.display = 'inline-flex';
+      status.className = 'status-indicator collecting';
+      status.querySelector('span').textContent = '采集中';
+      status.querySelector('.status-dot').classList.add('pulse');
+      
+      // 显示并初始化进度条
+      progressDiv.style.display = 'block';
+      updateProgressBar(`progress_${account_id}`, 0, '准备中...', '--');
+      
+      // 清除之前的结果
+      resultDiv.innerHTML = '';
+      
+      try {
+        const days = parseInt(document.getElementById(`days_${account_id}`).value) || 7;
+        const j = await apiJSON('/api/collect', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({days, accounts: [account_id]})
+        });
+        
+        if (j.ok) {
+          // 显示任务启动成功消息
+          showCollectionResult(resultDiv, {
+            ok: true, 
+            data: {message: "采集任务已启动，正在后台运行..."}
+          }, account_id);
+          
+          // 开始轮询进度
+          startProgressPolling(account_id);
+        } else {
+          // 显示错误
+          showCollectionResult(resultDiv, j, account_id);
+          
+          // 恢复按钮状态
+          btn.disabled = false;
+          btn.classList.remove('loading-btn');
+          btn.textContent = '开始采集（仅该账号）';
+          
+          // 恢复状态指示器
+          status.className = 'status-indicator idle';
+          status.querySelector('span').textContent = '空闲';
+          status.querySelector('.status-dot').classList.remove('pulse');
+          
+          // 隐藏进度条
+          progressDiv.style.display = 'none';
+        }
+        
+      } catch (error) {
+        showCollectionResult(resultDiv, {ok: false, error: error.message}, account_id);
+        
+        // 恢复按钮状态
+        btn.disabled = false;
+        btn.classList.remove('loading-btn');
+        btn.textContent = '开始采集（仅该账号）';
+        
+        // 恢复状态指示器
+        status.className = 'status-indicator idle';
+        status.querySelector('span').textContent = '空闲';
+        status.querySelector('.status-dot').classList.remove('pulse');
+        
+        // 隐藏进度条
+        progressDiv.style.display = 'none';
+      }
+    }
+
+    function downloadTxt(account_id) {
+      const range = document.getElementById(`range_${account_id}`).value;
+      const chat = document.getElementById(`chat_${account_id}`).value.trim();
+      const url = `/api/export/txt?range=${encodeURIComponent(range)}&account_id=${account_id}` + (chat ? `&chat_id=${encodeURIComponent(chat)}` : '');
+      window.location.href = url;
+    }
+
+    function downloadListenerUsernames(account_id) {
+      const url = `/api/export/listener-usernames/${account_id}`;
+      window.location.href = url;
+    }
+
+    async function cleanupDatabase() {
+      if (!confirm('确认整理数据库？这将去除重复数据并优化@username格式。')) return;
+      
+      try {
+        const response = await apiJSON('/api/database/cleanup', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'}
+        });
+        
+        if (response.ok) {
+          alert(`数据库整理完成！\n${response.data.message}\n详情：${JSON.stringify(response.data.details, null, 2)}`);
+        } else {
+          alert('整理失败: ' + response.error);
+        }
+      } catch (error) {
+        alert('整理失败: ' + error.message);
+      }
+    }
+
+    async function downloadCleanedUsernames() {
+      try {
+        const response = await fetch('/api/export/cleaned-usernames', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${authToken}`
+          }
+        });
+        
+        if (response.ok) {
+          // 获取文件内容
+          const blob = await response.blob();
+          
+          // 从响应头获取文件名
+          const contentDisposition = response.headers.get('Content-Disposition');
+          let filename = 'cleaned_usernames.txt';
+          if (contentDisposition) {
+            const filenameMatch = contentDisposition.match(/filename=(.+)/);
+            if (filenameMatch) {
+              filename = filenameMatch[1];
+            }
+          }
+          
+          // 创建下载链接
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.style.display = 'none';
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+        } else {
+          const errorText = await response.text();
+          alert('下载失败: ' + errorText);
+        }
+      } catch (error) {
+        alert('下载失败: ' + error.message);
+      }
+    }
+
+    async function toggleEnabled(account_id, enabled) {
+      const j = await apiJSON(`/api/accounts/${account_id}`, {
+        method: 'PUT', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({is_enabled: enabled})
+      });
+      if (!j.ok) alert('更新失败: ' + j.error);
+    }
+
+    async function deleteAccount(account_id) {
+      if (!confirm('确认删除该账号？')) return;
+      const j = await apiJSON(`/api/accounts/${account_id}`, {method: 'DELETE'});
+      alert(j.ok ? '已删除' : ('删除失败: ' + j.error));
+      await loadAccounts();
+    }
+
+    async function collectAllEnabled() {
+      const btn = document.getElementById('collect_all_btn');
+      const status = document.getElementById('status_all');
+      const progressDiv = document.getElementById('progress_all');
+      const resultDiv = document.getElementById('result_all');
+      
+      // 设置加载状态
+      btn.disabled = true;
+      btn.classList.add('loading-btn');
+      btn.textContent = '采集中...';
+      
+      // 显示状态指示器和进度条
+      status.style.display = 'inline-flex';
+      status.className = 'status-indicator collecting';
+      status.querySelector('span').textContent = '采集中';
+      status.querySelector('.status-dot').classList.add('pulse');
+      
+      // 显示并初始化进度条
+      progressDiv.style.display = 'block';
+      updateProgressBar('progress_all', 0, '准备中...', '--');
+      
+      // 清除之前的结果
+      resultDiv.innerHTML = '';
+      
+      try {
+        const days = parseInt(document.getElementById('days_all').value) || 7;
+        const j = await apiJSON('/api/collect', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({days})
+        });
+        
+        if (j.ok) {
+          // 显示任务启动成功消息
+          showCollectionResult(resultDiv, {
+            ok: true, 
+            data: {message: "采集任务已启动，正在后台运行..."}
+          }, 'all');
+          
+          // 开始轮询进度
+          startProgressPolling('all');
+        } else {
+          // 显示错误
+          showCollectionResult(resultDiv, j, 'all');
+          
+          // 恢复按钮状态
+          btn.disabled = false;
+          btn.classList.remove('loading-btn');
+          btn.textContent = '采集所有启用账号';
+          
+          // 恢复状态指示器
+          status.className = 'status-indicator idle';
+          status.querySelector('span').textContent = '空闲';
+          status.querySelector('.status-dot').classList.remove('pulse');
+          
+          // 隐藏进度条
+          progressDiv.style.display = 'none';
+        }
+        
+      } catch (error) {
+        showCollectionResult(resultDiv, {ok: false, error: error.message}, 'all');
+        
+        // 恢复按钮状态
+        btn.disabled = false;
+        btn.classList.remove('loading-btn');
+        btn.textContent = '采集所有启用账号';
+        
+        // 恢复状态指示器
+        status.className = 'status-indicator idle';
+        status.querySelector('span').textContent = '空闲';
+        status.querySelector('.status-dot').classList.remove('pulse');
+        
+        // 隐藏进度条
+        progressDiv.style.display = 'none';
+      }
+    }
+
+    function downloadTxtAll() {
+      const range = document.getElementById('range_all').value;
+      const chat = document.getElementById('chat_all').value.trim();
+      const url = `/api/export/txt?range=${encodeURIComponent(range)}` + (chat ? `&chat_id=${encodeURIComponent(chat)}` : '');
+      window.location.href = url;
+    }
+
+    // 显示采集结果的函数
+    function showCollectionResult(container, response, accountId) {
+      const isSuccess = response.ok;
+      const panelClass = isSuccess ? 'result-panel' : 'result-panel error';
+      
+      let content = '';
+      if (isSuccess) {
+        // 检查是否是启动消息
+        if (response.data.message) {
+          content = `
+            <div class="result-header">
+              <span>🚀 任务启动</span>
+              <span style="color: var(--muted); font-size: 12px;">${new Date().toLocaleString()}</span>
+            </div>
+            <div class="result-content">
+              ${response.data.message}
+            </div>
+            <div class="result-content" style="margin-top: 8px; padding: 8px; background: rgba(76, 175, 80, 0.1); border-radius: 4px;">
+              💡 请等待进度更新，采集完成后会显示详细结果
+            </div>
+          `;
+        } else {
+          // 处理采集完成的结果
+          const results = response.data.results || {};
+          const accountResults = accountId === 'all' ? results : {[accountId]: results[accountId]};
+          
+          // 计算总计
+          let totalUsers = 0, totalSpeaks = 0, totalGroups = 0;
+          for (const [accId, result] of Object.entries(accountResults)) {
+            if (result) {
+              totalUsers += result.new_users || 0;
+              totalSpeaks += result.new_speaks || 0;
+              totalGroups += result.groups_processed || 0;
+            }
+          }
+          
+          content = `
+            <div class="result-header">
+              <span>✅ 采集完成</span>
+              <span style="color: var(--muted); font-size: 12px;">${new Date().toLocaleString()}</span>
+            </div>
+            <div class="result-stats">
+              <div class="stat-item">
+                <div class="stat-value">${totalUsers}</div>
+                <div class="stat-label">新用户</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-value">${totalSpeaks}</div>
+                <div class="stat-label">新消息</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-value">${totalGroups}</div>
+                <div class="stat-label">处理群组</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-value">${Object.keys(accountResults).length}</div>
+                <div class="stat-label">账号数量</div>
+              </div>
+            </div>
+          `;
+          
+          if (totalUsers === 0 && totalSpeaks === 0) {
+            content += `
+              <div class="result-content" style="margin-top: 8px; padding: 8px; background: rgba(255, 152, 0, 0.1); border-radius: 4px;">
+                💡 提示：未发现新数据，可能是因为采集时间范围内没有新活动。建议增加采集天数或检查群组选择。
+              </div>
+            `;
+          }
+          
+          // 保存到历史记录
+          saveCollectionHistory({
+            timestamp: new Date().toISOString(),
+            accountId: accountId,
+            success: true,
+            totalUsers,
+            totalSpeaks,
+            totalGroups,
+            accountCount: Object.keys(accountResults).length
+          });
+        }
+      } else {
+        content = `
+          <div class="result-header">
+            <span>❌ 采集失败</span>
+            <span style="color: var(--muted); font-size: 12px;">${new Date().toLocaleString()}</span>
+          </div>
+          <div class="result-content">
+            错误信息：${response.error || '未知错误'}
+          </div>
+          <div class="result-content" style="margin-top: 8px; padding: 8px; background: rgba(230, 92, 92, 0.1); border-radius: 4px;">
+            💡 建议：检查网络连接、账号状态或联系管理员
+          </div>
+        `;
+        
+        // 保存失败记录到历史
+        saveCollectionHistory({
+          timestamp: new Date().toISOString(),
+          accountId: accountId,
+          success: false,
+          error: response.error || '未知错误'
+        });
+      }
+      
+      container.innerHTML = `<div class="${panelClass}">${content}</div>`;
+      
+      // 5秒后自动淡出（但不删除）
+      setTimeout(() => {
+        const panel = container.querySelector('.result-panel');
+        if (panel) {
+          panel.style.opacity = '0.7';
+        }
+      }, 5000);
+    }
+
+    // 采集历史记录管理
+    function saveCollectionHistory(record) {
+      let history = JSON.parse(localStorage.getItem('collection_history') || '[]');
+      history.unshift(record); // 添加到开头
+      
+      // 只保留最近50条记录
+      if (history.length > 50) {
+        history = history.slice(0, 50);
+      }
+      
+      localStorage.setItem('collection_history', JSON.stringify(history));
+    }
+
+    function loadCollectionHistory() {
+      const history = JSON.parse(localStorage.getItem('collection_history') || '[]');
+      const container = document.getElementById('collection_history');
+      
+      if (history.length === 0) {
+        container.innerHTML = '<div class="result-content">暂无采集历史记录</div>';
+        return;
+      }
+      
+      let content = '<div class="list"><ul>';
+      for (const record of history.slice(0, 10)) { // 只显示最近10条
+        const time = new Date(record.timestamp).toLocaleString();
+        const accountText = record.accountId === 'all' ? '所有账号' : `账号 #${record.accountId}`;
+        
+        if (record.success) {
+          content += `
+            <li>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <strong style="color: #4caf50;">✅ ${accountText}</strong>
+                  <span style="color: var(--muted); font-size: 12px; margin-left: 8px;">${time}</span>
+                </div>
+                <div style="font-size: 12px; color: var(--muted);">
+                  用户: ${record.totalUsers} | 消息: ${record.totalSpeaks} | 群组: ${record.totalGroups}
+                </div>
+              </div>
+            </li>
+          `;
+        } else {
+          content += `
+            <li>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <strong style="color: #e65c5c;">❌ ${accountText}</strong>
+                  <span style="color: var(--muted); font-size: 12px; margin-left: 8px;">${time}</span>
+                </div>
+                <div style="font-size: 12px; color: #e65c5c;">
+                  ${record.error}
+                </div>
+              </div>
+            </li>
+          `;
+        }
+      }
+      content += '</ul></div>';
+      
+      if (history.length > 10) {
+        content += `<div class="result-content" style="text-align: center; margin-top: 8px;">显示最近 10 条，共 ${history.length} 条记录</div>`;
+      }
+      
+      container.innerHTML = content;
+    }
+
+    function clearCollectionHistory() {
+      if (confirm('确认清空所有采集历史记录？')) {
+        localStorage.removeItem('collection_history');
+        loadCollectionHistory();
+      }
+    }
+
+    // 进度条控制函数
+    function updateProgressBar(progressId, percentage, currentGroup, eta) {
+      const progressContainer = document.getElementById(progressId);
+      if (!progressContainer) return;
+      
+      const progressBar = progressContainer.querySelector('.progress-bar');
+      const percentageSpan = progressContainer.querySelector('.progress-percentage');
+      const currentGroupSpan = progressContainer.querySelector('.current-group');
+      const etaSpan = progressContainer.querySelector('.eta');
+      
+      if (progressBar) progressBar.style.width = `${percentage}%`;
+      if (percentageSpan) percentageSpan.textContent = `${percentage}%`;
+      if (currentGroupSpan) currentGroupSpan.textContent = currentGroup;
+      if (etaSpan) etaSpan.textContent = `预计剩余: ${eta}`;
+    }
+
+    // 进度轮询
+    const progressPollers = new Map();
+    
+    function startProgressPolling(accountId) {
+      // 停止之前的轮询
+      if (progressPollers.has(accountId)) {
+        clearInterval(progressPollers.get(accountId));
+      }
+      
+      const progressId = accountId === 'all' ? 'progress_all' : `progress_${accountId}`;
+      let pollCount = 0;
+      const maxPolls = 600; // 最多轮询10分钟 (600 * 1000ms)
+      
+      const poller = setInterval(async () => {
+        pollCount++;
+        
+        try {
+          // 调用实际的API获取进度
+          const response = await apiJSON(`/api/progress/${accountId}`);
+          
+          if (response.ok && response.data) {
+            const progress = response.data;
+            const percentage = progress.percentage || 0;
+            const groupName = progress.group_name || '准备中...';
+            
+            // 计算预计剩余时间
+            let eta = '--';
+            if (percentage > 0 && percentage < 100) {
+              const remainingGroups = progress.total_groups - progress.current_group;
+              const avgTimePerGroup = pollCount * 1000 / Math.max(progress.current_group, 1); // 毫秒
+              const remainingMs = remainingGroups * avgTimePerGroup;
+              const remainingMinutes = Math.ceil(remainingMs / 60000);
+              eta = `${remainingMinutes} 分钟`;
+            } else if (percentage >= 100) {
+              eta = '0 分钟';
+            }
+            
+            updateProgressBar(progressId, percentage, groupName, eta);
+            
+            // 如果采集完成，停止轮询
+            if (progress.status === 'completed' || percentage >= 100) {
+              clearInterval(poller);
+              progressPollers.delete(accountId);
+              
+              // 完成时设置100%并延迟隐藏
+              updateProgressBar(progressId, 100, '采集完成', '0 分钟');
+              setTimeout(() => {
+                const progressDiv = document.getElementById(progressId);
+                if (progressDiv) progressDiv.style.display = 'none';
+              }, 3000);
+            }
+          } else {
+            // API返回错误或无数据，使用模拟进度
+            const mockProgress = Math.min(pollCount * 1, 95);
+            const mockGroup = `群组 ${Math.floor(pollCount / 10) + 1}`;
+            const mockEta = Math.max(0, Math.floor((100 - mockProgress) / 2)) + ' 分钟';
+            
+            updateProgressBar(progressId, mockProgress, mockGroup, mockEta);
+            
+            if (pollCount >= maxPolls || mockProgress >= 95) {
+              clearInterval(poller);
+              progressPollers.delete(accountId);
+              updateProgressBar(progressId, 100, '采集完成', '0 分钟');
+              setTimeout(() => {
+                const progressDiv = document.getElementById(progressId);
+                if (progressDiv) progressDiv.style.display = 'none';
+              }, 3000);
+            }
+          }
+        } catch (error) {
+          console.error('Progress polling error:', error);
+          
+          // 发生错误时停止轮询
+          clearInterval(poller);
+          progressPollers.delete(accountId);
+        }
+      }, 2000); // 每2秒轮询一次
+      
+      progressPollers.set(accountId, poller);
+    }
+
+    // 加载统计信息
+    async function loadStats() {
+      try {
+        const response = await fetch('/api/stats');
+        const result = await response.json();
+        
+        if (result.ok) {
+          const stats = result.data;
+          let html = `
+            <div class="row">
+              <strong>总体统计</strong>
+            </div>
+            <div class="row">
+              <span>总用户数: <strong>${stats.total_users}</strong></span>
+              <span>有用户名的用户: <strong>${stats.users_with_username}</strong></span>
+              <span>总发言数: <strong>${stats.total_speaks}</strong></span>
+            </div>
+          `;
+          
+          if (stats.account_stats && stats.account_stats.length > 0) {
+            html += `
+              <div class="row" style="margin-top: 15px;">
+                <strong>按账号统计</strong>
+              </div>
+            `;
+            stats.account_stats.forEach(acc => {
+              html += `
+                <div class="row">
+                  <span>${acc.account_name}: ${acc.user_count} 用户, ${acc.speak_count} 发言</span>
+                </div>
+              `;
+            });
+          }
+          
+          if (stats.recent_users && stats.recent_users.length > 0) {
+            html += `
+              <div class="row" style="margin-top: 15px;">
+                <strong>最近采集的用户 (最新10个)</strong>
+              </div>
+            `;
+            stats.recent_users.forEach(user => {
+              const displayName = user.first_name || user.last_name ? 
+                `${user.first_name || ''} ${user.last_name || ''}`.trim() : 
+                '无昵称';
+              const date = new Date(user.created_at).toLocaleString('zh-CN');
+              html += `
+                <div class="row" style="font-size: 0.9em; color: #666;">
+                  <span>@${user.username} (${displayName}) - ${date}</span>
+                </div>
+              `;
+            });
+          }
+          
+          document.getElementById('stats_content').innerHTML = html;
+        } else {
+          document.getElementById('stats_content').innerHTML = `<div class="row" style="color: red;">加载统计失败: ${result.error}</div>`;
+        }
+      } catch (error) {
+        console.error('Load stats error:', error);
+        document.getElementById('stats_content').innerHTML = `<div class="row" style="color: red;">加载统计时出错</div>`;
+      }
+    }
+
+    // 监听器相关函数
+    async function toggleListener(accountId) {
+      const btn = document.getElementById(`listener_btn_${accountId}`);
+      const status = document.getElementById(`listener_status_${accountId}`);
+      
+      const downloadBtn = document.getElementById(`download_listener_${accountId}`);
+      
+      try {
+        // 先获取当前状态
+        const statusResponse = await fetch(`/api/accounts/${accountId}/listener-status`);
+        const statusResult = await statusResponse.json();
+        
+        if (!statusResult.ok) {
+          alert(`获取监听器状态失败: ${statusResult.error}`);
+          return;
+        }
+        
+        const isRunning = statusResult.data.is_running;
+        
+        if (isRunning) {
+          // 停止监听
+          btn.textContent = '停止中...';
+          btn.disabled = true;
+          
+          const response = await fetch(`/api/accounts/${accountId}/stop-listener`, {
+            method: 'POST'
+          });
+          const result = await response.json();
+          
+          if (result.ok) {
+            btn.textContent = '启动监听';
+            btn.style.background = '#2196f3';
+            status.style.display = 'none';
+            downloadBtn.style.display = 'none'; // 隐藏下载按钮
+            alert('监听器已停止');
+          } else {
+            alert(`停止监听失败: ${result.error}`);
+          }
+        } else {
+          // 启动监听
+          btn.textContent = '启动中...';
+          btn.disabled = true;
+          
+          const response = await fetch(`/api/accounts/${accountId}/start-listener`, {
+            method: 'POST'
+          });
+          const result = await response.json();
+          
+          if (result.ok) {
+            btn.textContent = '停止监听';
+            btn.style.background = '#f44336';
+            status.style.display = 'inline-flex';
+            status.className = 'status-indicator running';
+            status.querySelector('span').textContent = '监听中';
+            downloadBtn.style.display = 'inline-block'; // 显示下载按钮
+            alert('监听器已启动');
+            
+            // 开始轮询监听器状态
+            startListenerStatusPolling(accountId);
+          } else {
+            alert(`启动监听失败: ${result.error}`);
+          }
+        }
+      } catch (error) {
+        console.error('Toggle listener error:', error);
+        alert('操作失败，请检查网络连接');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // 监听器状态轮询
+    const listenerPollers = new Map();
+    
+    function startListenerStatusPolling(accountId) {
+      // 清除已存在的轮询器
+      if (listenerPollers.has(accountId)) {
+        clearInterval(listenerPollers.get(accountId));
+      }
+      
+      const poller = setInterval(async () => {
+        try {
+          const response = await fetch(`/api/accounts/${accountId}/listener-status`);
+          const result = await response.json();
+          
+          if (result.ok) {
+            const status = result.data;
+            const statusDiv = document.getElementById(`listener_status_${accountId}`);
+            const btn = document.getElementById(`listener_btn_${accountId}`);
+            const downloadBtn = document.getElementById(`download_listener_${accountId}`);
+            
+            if (status.is_running) {
+              statusDiv.style.display = 'inline-flex';
+              statusDiv.className = 'status-indicator running';
+              statusDiv.querySelector('span').textContent = `监听中 (${status.messages_processed} 消息)`;
+              btn.textContent = '停止监听';
+              btn.style.background = '#f44336';
+              downloadBtn.style.display = 'inline-block'; // 显示下载按钮
+            } else {
+              statusDiv.style.display = 'none';
+              btn.textContent = '启动监听';
+              btn.style.background = '#2196f3';
+              downloadBtn.style.display = 'none'; // 隐藏下载按钮
+              clearInterval(poller);
+              listenerPollers.delete(accountId);
+            }
+          }
+        } catch (error) {
+          console.error('Listener status polling error:', error);
+        }
+      }, 3000); // 每3秒轮询一次
+      
+      listenerPollers.set(accountId, poller);
+    }
+
+    // 初始化监听器状态
+    async function initListenerStatus() {
+      try {
+        const response = await fetch('/api/listeners/status');
+        const result = await response.json();
+        
+        if (result.ok) {
+          const allStatus = result.data;
+          
+          Object.keys(allStatus).forEach(accountId => {
+            const status = allStatus[accountId];
+            const btn = document.getElementById(`listener_btn_${accountId}`);
+            const statusDiv = document.getElementById(`listener_status_${accountId}`);
+            
+            const downloadBtn = document.getElementById(`download_listener_${accountId}`);
+            
+            if (btn && statusDiv) {
+              if (status.is_running) {
+                btn.textContent = '停止监听';
+                btn.style.background = '#f44336';
+                statusDiv.style.display = 'inline-flex';
+                statusDiv.className = 'status-indicator running';
+                statusDiv.querySelector('span').textContent = `监听中 (${status.messages_processed} 消息)`;
+                if (downloadBtn) downloadBtn.style.display = 'inline-block'; // 显示下载按钮
+                startListenerStatusPolling(parseInt(accountId));
+              } else {
+                btn.textContent = '启动监听';
+                btn.style.background = '#2196f3';
+                statusDiv.style.display = 'none';
+                if (downloadBtn) downloadBtn.style.display = 'none'; // 隐藏下载按钮
+              }
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Init listener status error:', error);
+      }
+    }
+
+    // 认证相关功能
+    let authToken = localStorage.getItem('authToken');
+
+    // 检查登录状态
+    function checkAuthStatus() {
+      if (authToken) {
+        document.getElementById('login-container').style.display = 'none';
+        document.getElementById('main-container').style.display = 'block';
+        return true;
+      } else {
+        document.getElementById('login-container').style.display = 'flex';
+        document.getElementById('main-container').style.display = 'none';
+        return false;
+      }
+    }
+
+    // 登录处理
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const errorDiv = document.getElementById('login-error');
+
+      try {
+        const response = await fetch('/api/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ username, password }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          authToken = data.access_token;
+          localStorage.setItem('authToken', authToken);
+          checkAuthStatus();
+          loadAccounts();
+          initListenerStatus();
+          loadCollectionHistory();
+          loadStats();
+          errorDiv.style.display = 'none';
+        } else {
+          const errorData = await response.json();
+          errorDiv.textContent = errorData.detail || '登录失败';
+          errorDiv.style.display = 'block';
+        }
+      } catch (error) {
+        errorDiv.textContent = '网络错误，请重试';
+        errorDiv.style.display = 'block';
+      }
+    });
+
+    // 退出登录
+    document.getElementById('logout-btn').addEventListener('click', () => {
+      localStorage.removeItem('authToken');
+      authToken = null;
+      checkAuthStatus();
+    });
+
+    // 修改所有API请求以包含认证头
+    const originalFetch = window.fetch;
+    window.fetch = function(url, options = {}) {
+      if (authToken && url.startsWith('/api/') && !url.includes('/api/login')) {
+        options.headers = {
+          ...options.headers,
+          'Authorization': `Bearer ${authToken}`
+        };
+      }
+      return originalFetch(url, options).then(response => {
+        if (response.status === 401) {
+          localStorage.removeItem('authToken');
+          authToken = null;
+          checkAuthStatus();
+        }
+        return response;
+      });
+    };
+
+    window.addEventListener('load', () => {
+      if (checkAuthStatus()) {
+        loadAccounts();
+        initListenerStatus();
+        loadCollectionHistory();
+        loadStats(); // 页面加载时自动加载统计
+      }
+    });
+  </script>
+  </div> <!-- 闭合主界面容器 -->
+</body>
+</html>
