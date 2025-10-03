@@ -21,6 +21,10 @@ nginx/ssl/*.pem
 nginx/ssl/*.key
 nginx/ssl/*.crt
 
+# AWS Keys and certificates
+*.pem
+LightsailDefaultKey-*.pem
+
 # Python
 __pycache__/
 *.py[cod]
