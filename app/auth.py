@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import jwt
+from jwt.exceptions import InvalidTokenError, ExpiredSignatureError
 from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import HTTPException, status, Depends
@@ -27,13 +28,13 @@ def verify_token(token: str) -> dict:
     try:
         payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
         return payload
-    except jwt.ExpiredSignatureError:
+    except ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token已过期",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    except jwt.JWTError:
+    except InvalidTokenError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="无效的token",
